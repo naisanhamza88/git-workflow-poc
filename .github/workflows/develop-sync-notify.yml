@@ -1,0 +1,25 @@
+name: develop-sync-notify
+on:
+  push:
+    branches: [develop]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Mention owners of outdated PRs
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --base develop --state open \
+            --json number,headRefName,author --jq '.[] | "\(.number) \(.headRefName) \(.author.login)"' |
+          while read -r NUM HEAD AUTHOR; do
+            BEHIND=$(gh api "repos/$GITHUB_REPOSITORY/compare/develop...$HEAD" --jq '.behind_by')
+            echo "PR #$NUM ($HEAD) behind develop by $BEHIND"
+            if [ "${BEHIND:-0}" -gt 0 ]; then
+              gh pr comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "@$AUTHOR \`develop\` has $BEHIND new commit(s) not in \`$HEAD\`. Please sync your branch (Update branch)."
+            fi
+          done
